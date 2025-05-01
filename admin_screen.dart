@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key});
@@ -34,11 +35,14 @@ class _AdminScreenState extends State<AdminScreen> {
       return;
     }
 
+    final sanitizedOptions = options.map((e) => e.replaceAll('.', '_dot_')).toList();
+
     final pollData = {
       'title': title,
       'description': description,
-      'options': options,
-      'votes': {for (var opt in options) opt: 0},
+      'options': sanitizedOptions,
+      'votes': {for (var opt in sanitizedOptions) opt: 0},
+      'votedUsers': [],
       'isMultipleChoice': isMultipleChoice,
       'isAnonymous': isAnonymous,
       'createdAt': Timestamp.now(),
@@ -83,72 +87,122 @@ class _AdminScreenState extends State<AdminScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cardDecoration = BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.deepPurple.withAlpha(25),
+          blurRadius: 10,
+          offset: const Offset(0, 4),
+        ),
+      ],
+    );
+
     return Scaffold(
-      appBar: AppBar(title: const Text("Admin - Create Poll")),
+      backgroundColor: const Color(0xFFF5F5FA),
+      appBar: AppBar(
+        title: const Text("Poller - Create Poll"),
+        backgroundColor: Colors.deepPurple,
+        foregroundColor: Colors.white,
+        elevation: 4,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: titleController,
-              decoration: const InputDecoration(labelText: 'Poll Title'),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: descriptionController,
-              decoration: const InputDecoration(labelText: 'Poll Description'),
-            ),
-            const SizedBox(height: 20),
-            const Text('Options:', style: TextStyle(fontWeight: FontWeight.bold)),
-            ...optionControllers.map(
-                  (controller) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: TextField(
-                  controller: controller,
-                  decoration: const InputDecoration(labelText: 'Option'),
+        child: Container(
+          decoration: cardDecoration,
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildInput(titleController, 'Poll Title'),
+              const SizedBox(height: 12),
+              _buildInput(descriptionController, 'Poll Description'),
+              const SizedBox(height: 20),
+              const Text('Options', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              ...optionControllers.map(
+                    (controller) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: _buildInput(controller, 'Option'),
                 ),
               ),
-            ),
-            TextButton(onPressed: addOption, child: const Text('Add Option')),
-            CheckboxListTile(
-              title: const Text('Allow Multiple Choice'),
-              value: isMultipleChoice,
-              onChanged: (val) => setState(() => isMultipleChoice = val!),
-            ),
-            CheckboxListTile(
-              title: const Text('Anonymous Voting'),
-              value: isAnonymous,
-              onChanged: (val) => setState(() => isAnonymous = val!),
-            ),
-            ListTile(
-              title: Text(
-                expiryDate == null
-                    ? 'Set Expiry Date'
-                    : 'Expires on: ${expiryDate!.toLocal()}',
+              TextButton.icon(
+                icon: const Icon(Icons.add, color: Colors.deepPurple),
+                label: const Text('Add Option', style: TextStyle(color: Colors.deepPurple)),
+                onPressed: addOption,
               ),
-              trailing: const Icon(Icons.calendar_today),
-              onTap: () async {
-                final pickedDate = await showDatePicker(
-                  context: context,
-                  initialDate: DateTime.now().add(const Duration(days: 1)),
-                  firstDate: DateTime.now(),
-                  lastDate: DateTime(2100),
-                );
-                if (pickedDate != null) {
-                  setState(() => expiryDate = pickedDate);
-                }
-              },
-            ),
-            const SizedBox(height: 20),
-            Center(
-              child: ElevatedButton(
-                onPressed: createPoll,
-                child: const Text('Create Poll'),
+              const SizedBox(height: 12),
+              CheckboxListTile(
+                title: const Text('Allow Multiple Choice'),
+                value: isMultipleChoice,
+                activeColor: Colors.deepPurple,
+                onChanged: (val) => setState(() => isMultipleChoice = val!),
               ),
-            ),
-          ],
+              CheckboxListTile(
+                title: const Text('Anonymous Voting'),
+                value: isAnonymous,
+                activeColor: Colors.deepPurple,
+                onChanged: (val) => setState(() => isAnonymous = val!),
+              ),
+              ListTile(
+                title: Text(
+                  expiryDate == null
+                      ? 'Set Expiry Date'
+                      : 'Expires on: ${DateFormat.yMMMd().format(expiryDate!)}',
+                  style: const TextStyle(fontSize: 15),
+                ),
+                trailing: const Icon(Icons.calendar_today, color: Colors.deepPurple),
+                onTap: () async {
+                  final pickedDate = await showDatePicker(
+                    context: context,
+                    initialDate: DateTime.now().add(const Duration(days: 1)),
+                    firstDate: DateTime.now(),
+                    lastDate: DateTime(2100),
+                  );
+                  if (pickedDate != null) {
+                    setState(() => expiryDate = pickedDate);
+                  }
+                },
+              ),
+              const SizedBox(height: 20),
+              Center(
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.send),
+                  label: const Text("Create Poll", style: TextStyle(fontSize: 16)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.deepPurple,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    elevation: 5,
+                  ),
+                  onPressed: createPoll,
+                ),
+              ),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildInput(TextEditingController controller, String label) {
+    return TextField(
+      controller: controller,
+      decoration: InputDecoration(
+        labelText: label,
+        filled: true,
+        fillColor: const Color(0xFFF0F0F5),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide.none,
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       ),
     );
   }
